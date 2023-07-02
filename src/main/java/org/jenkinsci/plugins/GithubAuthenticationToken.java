@@ -191,17 +191,25 @@ public class GithubAuthenticationToken extends AbstractAuthenticationToken {
 
     @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
     public GithubAuthenticationToken(final String accessToken, final String githubServer) throws IOException {
-        this(accessToken, githubServer, false);
-    }
-
-    @SuppressFBWarnings(value = "NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE")
-    public GithubAuthenticationToken(final String accessToken, final String githubServer, final boolean clearUserCache) throws IOException {
         super(new GrantedAuthority[] {});
 
         this.accessToken = accessToken;
         this.githubServer = githubServer;
 
-        this.me = loadMyself(accessToken);
+        String[] tokensPrefixesList = System.getProperty("org.jenkinsci.plugins.GithubAuthenticationToken.cacheTokensWithThesePrefixes", "").split(",");
+        Boolean tokenInList = false;
+        for(String tokenPrefix : tokensPrefixesList){
+            if(! tokenPrefix.isEmpty() && accessToken.startsWith(tokenPrefix)){
+                tokenInList = true;
+                break;
+            }
+        }
+        if(tokenInList) {
+            this.me = loadMyself(accessToken);
+            LOGGER.log(Level.FINE, "Using cache for user: " + this.me.getLogin());
+        } else {
+            this.me = getGitHub().getMyself();
+        }
 
         if(this.me == null) {
             throw new UsernameNotFoundException("Token not valid");
@@ -210,11 +218,7 @@ public class GithubAuthenticationToken extends AbstractAuthenticationToken {
         setAuthenticated(true);
 
         this.userName = this.me.getLogin();
-        if (clearUserCache) {
-            // Clear the cache when requested. In particular, for new logins as groups and teams
-            // may have changed due to SSO [JENKINS-60200].
-            clearCacheForUser(this.userName);
-        }
+
         authorities.add(SecurityRealm.AUTHENTICATED_AUTHORITY);
 
         // This stuff only really seems useful if *not* using GithubAuthorizationStrategy
@@ -271,17 +275,6 @@ public class GithubAuthenticationToken extends AbstractAuthenticationToken {
         usersByTokenCache.invalidateAll();
         userTeamsCache.invalidateAll();
     }
-
-    /**
-     * Clear caches by username for use in new logins
-     */
-    public static void clearCacheForUser(String userName) {
-        userOrganizationCache.invalidate(userName);
-        repositoriesByUserCache.invalidate(userName);
-        usersByIdCache.invalidate(userName);
-        userTeamsCache.invalidate(userName);
-    }
-
 
     /**
      * Gets the OAuth access token, so that it can be persisted and used elsewhere.
