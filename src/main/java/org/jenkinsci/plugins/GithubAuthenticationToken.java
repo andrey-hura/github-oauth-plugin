@@ -54,13 +54,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.Proxy;
 import java.net.URL;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -188,7 +182,20 @@ public class GithubAuthenticationToken extends AbstractAuthenticationToken {
         this.accessToken = accessToken;
         this.githubServer = githubServer;
 
-        this.me = loadMyself(accessToken);
+        String[] tokensPrefixesList = System.getProperty("org.jenkinsci.plugins.GithubAuthenticationToken.cacheTokensWithThesePrefixes", "").split(",");
+        Boolean tokenInList = false;
+        for(String tokenPrefix : tokensPrefixesList){
+            if(! tokenPrefix.isEmpty() && accessToken.startsWith(tokenPrefix)){
+                tokenInList = true;
+                break;
+            }
+        }
+        if(tokenInList) {
+            this.me = loadMyself(accessToken);
+            LOGGER.log(Level.FINE, "Using cache for user: " + this.me.getLogin());
+        } else {
+            this.me = getGitHub().getMyself();
+        }
 
         assert this.me!=null;
 
